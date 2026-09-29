@@ -144,6 +144,32 @@
   .test:active { border-color: var(--accent); color: var(--accent); }
   .test:focus-visible, .word:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+  .methods {
+    position: absolute;
+    left: 0; right: 0;
+    top: 12px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .m {
+    font: inherit;
+    color: var(--fg);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    width: 36px; height: 36px;
+    padding: 0;
+  }
+  .m.on { border-color: var(--accent); color: var(--accent); }
+  .vsw { display: flex; align-items: center; gap: 8px; margin-left: 8px; color: var(--fg); }
   @media (prefers-reduced-motion: reduce) {
     .word { transition: none; }
   }
@@ -152,7 +178,14 @@
 </head>
 <body>
 <div class="stage">
-  <div class="head">Scorri</div>
+  <div class="methods">
+    <span class="mlabel">Metodo</span>
+    <button class="m on" type="button" data-m="A">A</button>
+    <button class="m" type="button" data-m="B">B</button>
+    <button class="m" type="button" data-m="C">C</button>
+    <button class="m" type="button" data-m="D">D</button>
+    <label class="vsw" id="vswLabel">Switch <input type="checkbox" switch id="vsw"></label>
+  </div>
   <div class="picker" id="picker" tabindex="0" aria-label="Elenco di parole"></div>
   <div class="band" aria-hidden="true"></div>
   <div class="hud">
@@ -196,31 +229,52 @@
 
   /* ---------- haptic ---------- */
   var canVibrate = typeof navigator.vibrate === "function";
-  var label = document.createElement("label");
-  label.setAttribute("aria-hidden", "true");
-  label.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden";
-  var sw = document.createElement("input");
-  sw.type = "checkbox";
-  sw.setAttribute("switch", "");
-  sw.tabIndex = -1;
-  label.appendChild(sw);
-  document.body.appendChild(label);
-
-  var switchOK = false;
-  try { switchOK = CSS.supports("-webkit-appearance", "none") && "switch" in document.createElement("input"); } catch (e) {}
-  // "switch" is a reflected attribute only where supported (Safari 17.4+)
-  if (!switchOK) { try { switchOK = /iP(hone|ad|od)|Macintosh/.test(navigator.userAgent) && "ontouchend" in document; } catch (e) {} }
+  function mk(css) {
+    var l = document.createElement("label");
+    l.setAttribute("aria-hidden", "true");
+    l.style.cssText = css;
+    var i = document.createElement("input");
+    i.type = "checkbox";
+    i.setAttribute("switch", "");
+    i.tabIndex = -1;
+    l.appendChild(i);
+    document.body.appendChild(l);
+    return l;
+  }
+  // A: label nascosta con display:none | B: label invisibile ma nel layout | C: click diretto sull'input di B | D: click programmatico sullo switch visibile
+  var labA = mk("display:none");
+  var labB = mk("position:fixed;top:0;left:0;width:44px;height:28px;opacity:0.01;pointer-events:none");
+  var vsw = document.getElementById("vsw");
+  var vswLabel = document.getElementById("vswLabel");
+  var method = "A";
 
   var ticks = 0;
+  function fire() {
+    try {
+      if (method === "A") labA.click();
+      else if (method === "B") labB.click();
+      else if (method === "C") labB.firstChild.click();
+      else vswLabel.click();
+    } catch (e) {}
+  }
   function haptic() {
     ticks++;
     countEl.textContent = ticks;
     if (canVibrate) {
       try { if (navigator.vibrate(12)) return; } catch (e) {}
     }
-    try { label.click(); } catch (e) {}
+    fire();
   }
-  modeEl.textContent = canVibrate ? "Vibrate API" : (switchOK ? "Switch iOS" : "Nessun haptic");
+  var mBtns = document.querySelectorAll(".m");
+  Array.prototype.forEach.call(mBtns, function (b) {
+    b.addEventListener("click", function () {
+      method = b.getAttribute("data-m");
+      Array.prototype.forEach.call(mBtns, function (x) { x.classList.toggle("on", x === b); });
+      modeEl.textContent = canVibrate ? "Vibrate API" : "Metodo " + method;
+      haptic();
+    });
+  });
+  modeEl.textContent = canVibrate ? "Vibrate API" : "Metodo " + method;
   testBtn.addEventListener("click", haptic);
 
   /* ---------- selection ---------- */
@@ -250,6 +304,11 @@
       ticking = false;
       select(indexFromScroll(), false);
     });
+  }, { passive: true });
+
+  // dentro il gesto touch, dove Safari accetta il feedback
+  picker.addEventListener("touchmove", function () {
+    select(indexFromScroll(), false);
   }, { passive: true });
 
   window.addEventListener("resize", function () {
