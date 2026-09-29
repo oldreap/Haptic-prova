@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Haptic Lib Test</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: status + trigger button on top, scroll picker filling the rest; both call the ios-haptics library */
+  :root {
+    --bg: #0e1013; --fg: #f2efe8; --muted: #4a4f57; --accent: #ffb74a; --line: #23272d;
+    --font-display: "Instrument Serif", Georgia, serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    --item: 76px;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) { --bg: #f3f1ec; --fg: #16181c; --muted: #b3b0a8; --accent: #c2410c; --line: #dedbd3; color-scheme: light; }
+  }
+  :root[data-theme="light"] { --bg: #f3f1ec; --fg: #16181c; --muted: #b3b0a8; --accent: #c2410c; --line: #dedbd3; color-scheme: light; }
+
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--fg); padding-inline: 16px; overflow: hidden; -webkit-tap-highlight-color: transparent; display: flex; flex-direction: column; }
+
+  .top {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding-block: 16px;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+  }
+  .top b { color: var(--accent); font-weight: 500; font-variant-numeric: tabular-nums; }
+  #btn {
+    font: inherit; letter-spacing: inherit; text-transform: none;
+    color: var(--fg); background: transparent;
+    border: 1px solid var(--accent); border-radius: 999px;
+    padding: 12px 18px;
+  }
+  #btn:active { color: var(--accent); }
+
+  .stage { position: relative; flex: 1; min-height: 0; }
+  .picker {
+    height: 100%; overflow-y: auto; scroll-snap-type: y mandatory; overscroll-behavior: contain; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28%, #000 72%, transparent 100%);
+            mask-image: linear-gradient(to bottom, transparent 0, #000 28%, #000 72%, transparent 100%);
+  }
+  .picker::-webkit-scrollbar { display: none; }
+  .word {
+    height: var(--item); display: flex; align-items: center; justify-content: center;
+    scroll-snap-align: center; scroll-snap-stop: always;
+    font-family: var(--font-display); font-size: 40px; line-height: 1; color: var(--muted);
+    transition: color .18s ease, font-size .18s ease; user-select: none; -webkit-user-select: none;
+  }
+  .word.on { color: var(--fg); font-size: 58px; font-style: italic; }
+  .band {
+    position: absolute; left: 0; right: 0; top: 50%; height: var(--item); transform: translateY(-50%);
+    border-block: 1px solid var(--line); pointer-events: none;
+  }
+  @media (prefers-reduced-motion: reduce) { .word { transition: none; } }
+</style>
+</head>
+<body>
+<div class="top">
+  <span id="status">Libreria…</span>
+  <span>Tick <b id="count">0</b></span>
+  <button id="btn" type="button">hapticTrigger</button>
+</div>
+<div class="stage">
+  <div class="picker" id="picker" aria-label="Elenco di parole"></div>
+  <div class="band" aria-hidden="true"></div>
+</div>
+
+<script type="module">
+  var statusEl = document.getElementById("status");
+  var countEl = document.getElementById("count");
+  var ticks = 0;
+  var lib = null;
+
+  function haptic() {
+    ticks++;
+    countEl.textContent = ticks;
+    try { if (lib) lib(); } catch (e) { statusEl.textContent = "Errore haptic()"; }
+  }
+
+  try {
+    var mod = await import("https://cdn.jsdelivr.net/npm/ios-haptics/+esm");
+    lib = mod.haptic || mod.default;
+    statusEl.textContent = lib ? "Libreria ok" : "Libreria senza haptic()";
+  } catch (e) {
+    statusEl.textContent = "Libreria non caricata";
+  }
+
+  document.getElementById("btn").addEventListener("click", haptic);
+
+  var WORDS = ["Alba","Brezza","Cenere","Dune","Eco","Falesia","Geyser","Nebbia","Ombra","Pioggia","Quarzo","Rugiada","Salina","Tramonto","Umbra","Vento","Zenit","Aurora","Brina","Cometa","Delta","Eclissi","Fiordo","Grotta","Isola","Lava","Marea","Nuvola","Onda","Prateria"];
+  var picker = document.getElementById("picker");
+  var padTop = document.createElement("div");
+  var padBottom = document.createElement("div");
+  picker.appendChild(padTop);
+  var els = WORDS.map(function (w) {
+    var d = document.createElement("div");
+    d.className = "word";
+    d.textContent = w;
+    picker.appendChild(d);
+    return d;
+  });
+  picker.appendChild(padBottom);
+
+  var ITEM = 76;
+  function layout() {
+    ITEM = els[0].offsetHeight || 76;
+    var pad = Math.max(0, (picker.clientHeight - ITEM) / 2);
+    padTop.style.height = pad + "px";
+    padBottom.style.height = pad + "px";
+  }
+
+  var current = -1;
+  function idx() { return Math.min(WORDS.length - 1, Math.max(0, Math.round(picker.scrollTop / ITEM))); }
+  function select(i, silent) {
+    if (i === current) return;
+    if (current >= 0) els[current].classList.remove("on");
+    els[i].classList.add("on");
+    current = i;
+    if (!silent) haptic();
+  }
+
+  var busy = false;
+  picker.addEventListener("scroll", function () {
+    if (busy) return;
+    busy = true;
+    requestAnimationFrame(function () { busy = false; select(idx(), false); });
+  }, { passive: true });
+  picker.addEventListener("touchmove", function () { select(idx(), false); }, { passive: true });
+  window.addEventListener("resize", function () { var k = current < 0 ? 0 : current; layout(); picker.scrollTop = k * ITEM; });
+
+  layout();
+  var start = Math.floor(WORDS.length / 3);
+  picker.scrollTop = start * ITEM;
+  select(start, true);
+</script>
+</body>
+</html>
